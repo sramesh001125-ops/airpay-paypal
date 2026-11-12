@@ -8,6 +8,7 @@
 //      lender confirms.
 //   4. Block rule: a passenger with an unresolved due cannot be extended further credit/orders.
 //   5. QR/link burned only on verified settlement (see qr.js) and rail choice guarded by rules (rails.js).
+import crypto from 'node:crypto';
 import { CFG, toUsd, toInr, defaultInstrument, limitFor, limitsByInstrument } from './config.js';
 import { get, all, run } from './db.js';
 import { clock, rid, round2, contactKey, maskName, HttpError } from './util.js';
@@ -16,6 +17,7 @@ import * as rails from './rails.js';
 import * as ai from './ai.js';
 import * as qr from './qr.js';
 import * as pp from './paypal.js';
+import * as rz from './razorpay.js';
 import * as shield from './shield.js';
 import * as consent from './consent.js';
 import * as funding from './funding.js';
@@ -219,7 +221,7 @@ export async function startPayment(orderId) {
   let lastErr = null;
   for (const railId of order) {
     try {
-      checkout = await pp.createCheckout(withToken, railId);
+      checkout = railId === 'razorpay_upi' ? await rz.createCheckout(withToken) : await pp.createCheckout(withToken, railId);
       usedRail = railId;
       break;
     } catch (e) {
@@ -279,6 +281,16 @@ function markPaid(o, { amountUsd, source }) {
 export async function checkPayment(orderId) {
   const o = get('SELECT * FROM orders WHERE id=?', orderId);
   if (!o) throw new HttpError(404, 'unknown order');
+  if (o.paypal_kind === 'rzp') {
+    if (CFG.razorpay.mode !== 'test') return { state: o.state, note: 'Razorpay mock mode: use the simulated checkout page.' };
+    if (!PAYABLE.includes(o.state)) return { state: o.state, note: `Order is already ${o.state}.` };
+    const s = await rz.status(o.paypal_ref);
+    audit.log('server', 'RAZORPAY_STATUS_CHECKED', o.id, { status: s.status });
+    if (s.status === 'paid') {
+      return { razorpayStatus: s.status, ...markPaid(o, { amountUsd: s.amountPaidInr == null ? null : toUsd(s.amountPaidInr, 'INR'), source: 'razorpay-status-check' }) };
+    }
+    return { state: o.state, razorpayStatus: s.status, note: 'Razorpay does not show this as paid yet.' };
+  }
   if (CFG.paypal.mode !== 'live') return { state: o.state, note: 'Mock mode: use the simulated checkout page.' };
   if (!['order', 'invoice'].includes(o.paypal_kind)) return { state: o.state, note: 'Not a PayPal payment.' };
   if (!PAYABLE.includes(o.state)) return { state: o.state, note: `Order is already ${o.state}.` };
@@ -371,6 +383,41 @@ export async function processWebhook(headers, rawBody) {
       return { denied: true, state: o.state }; // order stays LINK_SENT so the buyer can retry
     default:
       audit.log('server', 'WEBHOOK_UNHANDLED', o.id, { type: ev.event_type });
+      return { unhandled: true };
+  }
+}
+
+/** Razorpay webhook (payment_link.paid etc.). Signature checked, de-duplicated, amount-checked. */
+export async function processRazorpayWebhook(headers, rawBody) {
+  if (!rz.enabled()) throw new HttpError(404, 'Razorpay rail is off');
+  if (!rz.verifyWebhook(headers, rawBody)) {
+    audit.log('server', 'WEBHOOK_REJECTED', null, { reason: 'bad razorpay signature' });
+    throw new HttpError(401, 'invalid webhook signature');
+  }
+  const ev = JSON.parse(rawBody);
+  const evId = `rzp-${headers['x-razorpay-event-id'] || crypto.createHash('sha256').update(rawBody).digest('hex').slice(0, 32)}`;
+  if (!ev.event) throw new HttpError(400, 'malformed event');
+  if (get('SELECT 1 AS x FROM webhook_events WHERE id=?', evId)) return { duplicate: true };
+  run('INSERT INTO webhook_events (id, type, received_at) VALUES (?,?,?)', evId, ev.event, clock.iso());
+
+  const ent = ev.payload?.payment_link?.entity || {};
+  const o = (ent.reference_id && get('SELECT * FROM orders WHERE id=?', ent.reference_id))
+    || (ent.id && get('SELECT * FROM orders WHERE paypal_ref=?', ent.id));
+  if (!o) {
+    audit.log('server', 'WEBHOOK_NO_ORDER', null, { type: ev.event, id: evId });
+    return { ignored: true };
+  }
+  switch (ev.event) {
+    case 'payment_link.paid': {
+      const inr = ent.currency === 'INR' && ent.amount_paid != null ? ent.amount_paid / 100 : null;
+      return markPaid(o, { amountUsd: inr == null ? null : toUsd(inr, 'INR'), source: 'razorpay-webhook' });
+    }
+    case 'payment_link.expired':
+    case 'payment_link.cancelled':
+      audit.log('server', 'PAYMENT_DENIED', o.id, { type: ev.event });
+      return { denied: true, state: o.state };
+    default:
+      audit.log('server', 'WEBHOOK_UNHANDLED', o.id, { type: ev.event });
       return { unhandled: true };
   }
 }

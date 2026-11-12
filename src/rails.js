@@ -11,6 +11,9 @@ export function eligibleRails(buyerCountry, instrument) {
   return Object.entries(CFG.rails)
     .filter(([, r]) => r.countries === '*' || r.countries.includes(cc))
     .filter(([, r]) => !r.instruments || r.instruments.includes(inst))
+    // Razorpay UPI is offered only when enabled; it then replaces the simulated UPI-style leg it stands in for.
+    .filter(([id]) => id !== 'razorpay_upi' || CFG.razorpay.mode !== 'off')
+    .filter(([id]) => !(id === 'upi_sim' && CFG.razorpay.mode !== 'off'))
     .map(([id]) => id);
 }
 

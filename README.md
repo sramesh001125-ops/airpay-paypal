@@ -54,6 +54,9 @@ The webhook URL must be reachable from the internet (deploy, or use a tunnel).
 - The QR/link is burned only by a verified settlement event, never by a scan or a failed attempt.
 - Webhooks are signature-checked, de-duplicated, and amount-checked.
 
+## Razorpay UPI rail (optional, off by default)
+For Indian passengers the router can offer a UPI payment link through Razorpay. `RAZORPAY_MODE=mock` simulates it locally with no keys; `RAZORPAY_MODE=test` uses Razorpay test-mode keys (written but not yet run against Razorpay). See `docs/RAZORPAY_CONNECTOR_NOTE.md`. The rail's cost in the fee table is a placeholder, not Razorpay's pricing.
+
 ## Files
 `src/engine.js` (core), `src/rails.js`, `src/qr.js`, `src/audit.js`, `src/paypal.js`, `src/ai.js`, `src/server.js`, `src/config.js`, `public/*` (landing page follows the RaMYOS pattern), `test/engine.test.js`.
 

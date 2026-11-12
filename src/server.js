@@ -16,6 +16,7 @@ import * as rails from './rails.js';
 import * as ai from './ai.js';
 import * as qr from './qr.js';
 import * as pp from './paypal.js';
+import * as rz from './razorpay.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -130,6 +131,11 @@ route('POST', '/api/paypal/webhook', async (req, res, ctx) => {
   json(res, { ok: true, ...out });
 }, { raw: true });
 
+route('POST', '/api/razorpay/webhook', async (req, res, ctx) => {
+  const out = await engine.processRazorpayWebhook(req.headers, ctx.body);
+  json(res, { ok: true, ...out });
+}, { raw: true });
+
 // ------------------------------------------------------------------ mock PayPal + simulated UPI pages
 async function fireMock(eventType, order, amountUsd) {
   const ev = {
@@ -163,6 +169,25 @@ route('POST', '/mock/paypal/:ref/decision', async (req, res, ctx) => {
   const approve = new URLSearchParams(ctx.body).get('d') === 'approve';
   const type = approve ? (o.paypal_kind === 'invoice' ? 'INVOICING.INVOICE.PAID' : 'PAYMENT.CAPTURE.COMPLETED') : 'PAYMENT.CAPTURE.DENIED';
   await fireMock(type, o, o.amount_usd);
+  res.writeHead(303, { location: `/pay/${o.pay_token}` });
+  res.end();
+});
+// Mock Razorpay UPI page (RAZORPAY_MODE=mock): fires a signed payment_link.paid webhook, as Razorpay would.
+route('GET', '/mock/razorpay/:orderId', (req, res, ctx) => {
+  const o = get('SELECT * FROM orders WHERE id=?', ctx.params.orderId);
+  if (!o || o.paypal_kind !== 'rzp') throw new HttpError(404, 'unknown mock Razorpay payment');
+  send(res, 200, checkoutPage('Simulated Razorpay UPI payment', o, `/mock/razorpay/${esc(o.id)}/decision`,
+    '<p>Stands in for a Razorpay UPI payment link. Razorpay test mode is used when RAZORPAY_MODE=test.</p>'), 'text/html; charset=utf-8');
+});
+route('POST', '/mock/razorpay/:orderId/decision', async (req, res, ctx) => {
+  const o = get('SELECT * FROM orders WHERE id=?', ctx.params.orderId);
+  if (!o || o.paypal_kind !== 'rzp') throw new HttpError(404, 'unknown mock Razorpay payment');
+  const approve = new URLSearchParams(ctx.body).get('d') === 'approve';
+  const raw = JSON.stringify({
+    entity: 'event', event: approve ? 'payment_link.paid' : 'payment_link.cancelled',
+    payload: { payment_link: { entity: { id: o.paypal_ref, reference_id: o.id, status: approve ? 'paid' : 'cancelled', amount_paid: approve ? rz.paise(o) : 0, currency: 'INR' } } },
+  });
+  await engine.processRazorpayWebhook({ 'x-razorpay-signature': rz.mockSign(raw), 'x-razorpay-event-id': `evt_${Math.random().toString(16).slice(2)}` }, raw);
   res.writeHead(303, { location: `/pay/${o.pay_token}` });
   res.end();
 });

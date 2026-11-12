@@ -1,13 +1,16 @@
 # Next step: a Razorpay UPI rail for Indian passengers (planned, not built)
 
-**Status:** design note. Nothing here is implemented in this prototype.
+**Status:** a first version is built (`src/razorpay.js`). It is OFF by default.
+- `RAZORPAY_MODE=mock` runs a local simulation of a Razorpay UPI payment link with a signed `payment_link.paid` webhook. Covered by tests (`test/razorpay.test.js`).
+- `RAZORPAY_MODE=test` calls Razorpay's Payment Links API (UPI link) with test-mode keys. **This path has not yet been run against Razorpay** because no test keys were available when it was written. Treat it as untested until it is.
+- Not built: any live use, partner agreements, real pricing, Razorpay QR codes, Cashfree or other providers.
 
 ## Why
 - PayPal reaches passengers in 140+ countries but does not support domestic payments inside India.
 - India is the largest real-time payments market (UPI: about 241.6 billion transactions in FY2025-26; a record 25.47 billion in October 2026). Verify the latest figures on NPCI's UPI statistics page before quoting.
 - Razorpay and PayPal have announced a partnership for Indian businesses to accept international payments. A tie-up with Razorpay, or another approved Indian platform, could let PayPal's network reach the Indian domestic market.
 
-## Plan
+## Plan (steps 1 to 4 exist in mock mode)
 1. Add a `razorpay_upi` rail to `src/rails.js` with its own cost row (to be confirmed from Razorpay's pricing; do not assume zero cost).
 2. Create a Razorpay UPI QR or payment link per order, single-use, same burn-on-verified-payment rule as the PayPal link.
 3. Confirm payment from Razorpay's own status or signed webhook, never from the browser.

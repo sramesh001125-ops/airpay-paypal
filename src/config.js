@@ -19,6 +19,16 @@ export const CFG = {
     settleCurrency: 'USD',
     invoicerEmail: env.PAYPAL_INVOICER_EMAIL || '',
   },
+  // Razorpay UPI rail for Indian passengers (planned partner route, see docs/RAZORPAY_CONNECTOR_NOTE.md).
+  // 'off' (default) = rail not offered. 'mock' = local simulation, no keys. 'test' = Razorpay TEST-mode APIs
+  // (needs RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / RAZORPAY_WEBHOOK_SECRET from a Razorpay test-mode account).
+  razorpay: {
+    mode: env.RAZORPAY_MODE || 'off',
+    keyId: env.RAZORPAY_KEY_ID || '',
+    keySecret: env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: env.RAZORPAY_WEBHOOK_SECRET || '',
+    apiBase: env.RAZORPAY_API_BASE || 'https://api.razorpay.com',
+  },
   mockWebhookSecret: env.MOCK_WEBHOOK_SECRET || 'dev-mock-secret-change-me',
   qrSecret: env.QR_SECRET || 'dev-qr-secret-change-me',
   adminKey: env.ADMIN_KEY || '', // if set, ledger/audit endpoints need header x-admin-key
@@ -118,7 +128,7 @@ export const CFG = {
     // Bank-type rails are funded by one source only.
     railSource: {
       ach_pay_by_bank: 'bank', ideal: 'bank', bancontact: 'bank', blik: 'bank', p24: 'bank', eps: 'bank', mybank: 'bank', trustly: 'bank',
-      upi_sim: 'savings_account',
+      upi_sim: 'savings_account', razorpay_upi: 'savings_account',
     },
     note: 'ILLUSTRATIVE funding costs per source (balance lowest, card highest). Not PayPal\'s real costs.',
   },
@@ -189,6 +199,12 @@ export const CFG = {
       label: 'UPI-style bank leg (simulated)',
       pct: 0, fixed: 0, xbPct: 0, fxPct: 0,
       reversible: false, simulated: true, settle: 'T+0', countries: ['IN'], instruments: ['upi_debit'],
+    },
+    // Razorpay UPI (India). Cost is a PLACEHOLDER (0) pending Razorpay's real pricing; do not quote it.
+    razorpay_upi: {
+      label: 'UPI via Razorpay (India)',
+      pct: 0, fixed: 0, xbPct: 0, fxPct: 0,
+      reversible: false, simulated: false, settle: 'per Razorpay terms', countries: ['IN'], instruments: ['upi_debit'],
     },
   },
 };
