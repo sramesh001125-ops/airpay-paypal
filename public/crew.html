@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Crew</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap">
+  <section style="margin-top:20px">
+    <h1 style="font-size:1.8rem">Crew device</h1>
+    <p class="muted">Orders are stored on this device while "offline". Turn airplane mode off and sync after landing.</p>
+    <div class="row" style="margin:8px 0 16px">
+      <label class="row" style="margin:0;gap:8px;color:var(--ink)"><input type="checkbox" id="offline" style="width:auto;min-height:0" checked> Airplane mode (simulated)</label>
+      <span class="badge" id="net"></span>
+      <span class="muted">Device: <span class="mono" id="dev"></span></span>
+    </div>
+    <div class="card">
+      <h3>New order</h3>
+      <div class="fields">
+        <div><label for="item">Item</label><select id="item"></select></div>
+        <div><label for="qty">Quantity</label><input id="qty" type="number" min="1" max="10" value="1"></div>
+        <div><label for="name">Passenger name</label><input id="name" placeholder="Asha Rao"></div>
+        <div><label for="contact">Phone or email</label><input id="contact" placeholder="+919800000001"></div>
+        <div><label for="country">Passenger country</label>
+          <select id="country"><option>US</option><option>GB</option><option>DE</option><option>NL</option><option>BE</option><option>PL</option><option>AT</option><option>IT</option><option>FR</option><option>ES</option><option>AE</option><option>SG</option><option>AU</option><option>CA</option><option>IN</option></select></div>
+        <div><label for="inst">Payment type</label>
+          <select id="inst"><option value="">Auto (India = UPI debit, others = international)</option><option value="intl">International: card, PayPal wallet, local bank</option><option value="upi_debit">India add-on: UPI debit from savings account</option></select></div>
+        <div><label for="consent">Card consent reference (optional)</label><input id="consent" placeholder="CN-XXXXXXXX">
+          <button class="btn small" id="mkConsent" type="button" style="margin-top:6px">Create consent form for this passenger</button></div>
+        <div><label for="cur">Charge in</label><select id="cur"><option>USD</option><option>EUR</option><option>INR</option></select></div>
+        <div><label for="flight">Flight</label><input id="flight" value="6E-123"></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="add">Add order</button>
+        <button class="btn" id="voice">🎤 Voice order</button>
+        <button class="btn" id="demo">Load 5 demo orders</button>
+        <span id="total" class="muted"></span>
+      </div>
+      <p id="msg" class="notice" style="display:none;margin-top:12px"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content:space-between">
+      <h2>Queued on this device <span class="badge" id="qn">0</span></h2>
+      <button class="btn primary" id="sync">Sync after landing</button>
+    </div>
+    <p class="muted" id="limits"></p>
+    <div class="tablewrap card"><table><thead><tr><th>Item</th><th>Passenger</th><th>Country</th><th>Amount</th><th></th></tr></thead><tbody id="q"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Synced orders</h2>
+    <div id="done" class="grid"></div>
+  </section>
+</main>
+<script type="module">
+import { topbar, api, esc, stateBadge } from '/common.js';
+topbar('crew');
+const $ = (id) => document.getElementById(id);
+let cfg;
+const KEY = 'airpayCrewQueue', DEV = 'airpayDeviceId', DONE = 'airpayDone';
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let deviceId = load(DEV, null);
+if (!deviceId) { deviceId = 'DEV-' + Math.random().toString(16).slice(2, 8).toUpperCase(); save(DEV, deviceId); }
+$('dev').textContent = deviceId;
+
+const toCur = (inr, cur) => cur === 'INR' ? inr : Math.round((inr / (cur === 'USD' ? cfg.fx.INR_PER_USD : cfg.fx.INR_PER_USD / cfg.fx.EUR_PER_USD)) * 100) / 100;
+const toInr = (amt, cur) => cur === 'INR' ? amt : amt * (cur === 'USD' ? cfg.fx.INR_PER_USD : cfg.fx.INR_PER_USD / cfg.fx.EUR_PER_USD);
+const queue = () => load(KEY, []);
+const note = (t, kind = '') => { const m = $('msg'); m.style.display = t ? 'block' : 'none'; m.className = `notice ${kind}`; m.textContent = t; };
+
+function price() {
+  const m = cfg.menu.find((x) => x.id === $('item').value);
+  const qty = Math.max(1, Math.min(10, Number($('qty').value) || 1));
+  const inr = m.priceInr * qty;
+  return { inr, amount: toCur(inr, $('cur').value), qty, m };
+}
+function refresh() {
+  const p = price();
+  $('total').textContent = `Total: ${$('cur').value} ${p.amount.toFixed(2)} (≈ ₹${p.inr})`;
+  const q = queue();
+  $('qn').textContent = q.length;
+  const inst = instOf($('country').value, $('inst').value);
+  const key = limitKeyOf(inst, !!$('consent').value.trim());
+  const L = cfg.limits[key];
+  const open = openFor(key);
+  $('limits').textContent = `${cfg.instruments[inst].label}${key === 'card_backed' ? ' with card consent' : ''}: up to ₹${Math.round(L.perTxnInr)} per order and ₹${Math.round(L.perDeviceInr)} open on this device (${key === 'upi_debit' ? 'India add-on caps' : 'airline risk cap, editable'}). Unsynced for this type: ₹${open.toFixed(0)}.`;
+  $('q').innerHTML = q.map((o, i) => `<tr><td>${o.items.map((it) => esc(cfg.menu.find((m) => m.id === it.id).name) + ' ×' + it.qty).join(', ')}</td>
+    <td>${esc(o.buyer.name)}<div class="muted">${esc(o.buyer.contact)}</div></td><td>${esc(o.buyer.country)}</td>
+    <td>${esc(o.currency)} ${o.amount.toFixed(2)}</td><td><button class="btn small" data-i="${i}">Remove</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Nothing queued.</td></tr>';
+  document.querySelectorAll('button[data-i]').forEach((b) => b.onclick = () => { const a = queue(); a.splice(Number(b.dataset.i), 1); save(KEY, a); refresh(); });
+  const net = !$('offline').checked && navigator.onLine;
+  $('net').textContent = net ? 'Online' : 'Offline'; $('net').className = `badge ${net ? 'ok' : 'warn'}`;
+  $('sync').disabled = !net || !q.length;
+  renderDone();
+}
+const instOf = (country, sel) => sel || (country === 'IN' ? 'upi_debit' : 'intl');
+const limitKeyOf = (inst, hasConsent) => (inst === 'upi_debit' && hasConsent ? 'card_backed' : inst);
+const keyOfOrder = (x) => limitKeyOf(instOf(x.buyer.country, x.buyer.instrument), !!x.buyer.consentRef);
+const openFor = (key) => queue().filter((x) => keyOfOrder(x) === key).reduce((s, x) => s + toInr(x.amount, x.currency), 0);
+function addOrder(o) {
+  const inr = toInr(o.amount, o.currency);
+  const inst = instOf(o.buyer.country, o.buyer.instrument);
+  const key = keyOfOrder(o);
+  const L = cfg.limits[key];
+  if (inst === 'upi_debit' && o.buyer.country !== 'IN') return note('UPI debit is an India-only add-on. Choose International for this passenger.', 'bad'), false;
+  if (inr > L.perTxnInr + 0.01) return note(`Blocked on device: over the ₹${Math.round(L.perTxnInr)} per-order limit for this payment type.`, 'bad'), false;
+  if (openFor(key) + inr > L.perDeviceInr + 0.01) return note(`Blocked on device: would exceed ₹${Math.round(L.perDeviceInr)} open on this device for this payment type. Sync first.`, 'bad'), false;
+  if (!o.buyer.name || !o.buyer.contact) return note('Passenger name and phone/email are required.', 'bad'), false;
+  const a = queue(); a.push(o); save(KEY, a); note('Order queued on this device.', 'ok'); refresh(); return true;
+}
+function mk(extra = {}) {
+  const p = price();
+  return {
+    clientId: crypto.randomUUID(), createdOfflineAt: Date.now(), items: [{ id: p.m.id, qty: p.qty }],
+    amount: p.amount, currency: $('cur').value,
+    buyer: { name: $('name').value.trim(), contact: $('contact').value.trim(), country: $('country').value, ...($('inst').value ? { instrument: $('inst').value } : {}), ...($('consent').value.trim() ? { consentRef: $('consent').value.trim() } : {}) }, ...extra,
+  };
+}
+$('add').onclick = () => addOrder(mk());
+for (const id of ['item', 'qty', 'cur', 'offline', 'country', 'inst']) $(id).onchange = refresh;
+$('consent').oninput = refresh;
+$('qty').oninput = refresh;
+// Demo helper: runs the real consent flow (issue, one-time code, tick, confirm) using the on-screen demo code.
+async function demoConsent(contact, country, inst) {
+  const c = await api('/api/consent', { method: 'POST', body: { contact, country, instrument: inst || undefined, maxAmountInr: 1000 } });
+  const o = await api(`/api/consent/${c.token}/otp`, { method: 'POST' });
+  if (!o.demoOtp) throw new Error('Demo one-time code is off (DEMO_OTP=0); confirm the form on the passenger\'s phone.');
+  await api(`/api/consent/${c.token}/confirm`, { method: 'POST', body: { otp: o.demoOtp, tick: true } });
+  return c.consentId;
+}
+$('mkConsent').onclick = async () => {
+  try {
+    if (!$('contact').value.trim()) return note('Enter the passenger\'s phone or email first.', 'bad');
+    const c = await api('/api/consent', { method: 'POST', body: { contact: $('contact').value.trim(), country: $('country').value, instrument: $('inst').value || undefined } });
+    $('consent').value = c.consentId; refresh();
+    window.open(c.formUrl.replace(location.origin, ''), '_blank');
+    note(`Consent form ${c.consentId} created. The passenger must open it, take the one-time code and confirm before the order is synced.`, 'ok');
+  } catch (e) { note(e.message, 'bad'); }
+};
+$('demo').onclick = () => {
+  const base = Math.floor(Math.random() * 9000 + 1000);
+  const samples = [
+    ['John Miller (international card + card consent)', `john${base}@example.com`, 'US', 'USD', '', true],
+    ['Sanne de Vries', `sanne${base}@example.com`, 'NL', 'EUR', ''],
+    ['Priya Nair (Indian credit card)', `+9199000${base}`, 'IN', 'INR', 'intl'],
+    ['Asha Rao (UPI debit, no card: overdraft backstop)', `+9198000${base}`, 'IN', 'INR', 'upi_debit', false],
+    ['Vikram Shah (UPI debit + backup credit card)', `+9197000${base}`, 'IN', 'INR', 'upi_debit', true],
+  ];
+  (async () => {
+    for (const [name, contact, country, cur, inst, card] of samples) {
+      $('name').value = name; $('contact').value = contact; $('country').value = country; $('cur').value = cur; $('inst').value = inst; $('item').value = 'sandwich'; $('qty').value = 1;
+      $('consent').value = card ? await demoConsent(contact, country, inst) : '';
+      addOrder(mk());
+    }
+    $('inst').value = ''; $('consent').value = ''; refresh();
+  })().catch((e) => note(e.message, 'bad'));
+};
+
+$('sync').onclick = async () => {
+  const q = queue();
+  $('sync').disabled = true;
+  try {
+    const { results } = await api('/api/crew/sync', { method: 'POST', body: { deviceId, flightNo: $('flight').value, orders: q } });
+    const done = load(DONE, []);
+    const remaining = [];
+    for (const r of results) {
+      const src = q.find((o) => o.clientId === r.clientId);
+      if (r.error) { remaining.push(src); note(`One order was not accepted: ${r.error}`, 'bad'); continue; }
+      done.unshift({ ...r, name: src?.buyer.name, amount: src ? `${src.currency} ${src.amount.toFixed(2)}` : '' });
+    }
+    save(DONE, done.slice(0, 30)); save(KEY, remaining.filter(Boolean));
+    note(`Synced ${results.length} order(s).`, 'ok');
+  } catch (e) { note(e.message, 'bad'); }
+  refresh();
+};
+function renderDone() {
+  const d = load(DONE, []);
+  $('done').innerHTML = d.map((r) => `<div class="card"><div class="row" style="justify-content:space-between"><strong>${esc(r.orderId)}</strong>${stateBadge(r.state)}</div>
+    <div>${esc(r.name)} · ${esc(r.amount)}</div>${r.reason ? `<p class="muted">${esc(r.reason)}</p>` : ''}
+    ${r.payToken ? `<div class="row" style="margin-top:8px"><img class="qr" alt="Pay QR" src="/qr/${esc(r.payToken)}.png"><div><a class="btn small primary" href="/pay/${esc(r.payToken)}">Open pay page</a></div></div>` : ''}</div>`).join('') || '<p class="muted">Nothing synced yet.</p>';
+}
+
+// Voice entry (browser speech recognition when available)
+const NUM = { one: 1, two: 2, three: 3, four: 4, five: 5, a: 1, an: 1 };
+function voice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return note('Voice input is not supported in this browser. Type the order instead.', 'warn');
+  const r = new SR(); r.lang = 'en-IN'; r.interimResults = false;
+  note('Listening… say, for example, “two sandwich meals for Asha Rao”.');
+  r.onresult = (e) => {
+    const t = e.results[0][0].transcript.toLowerCase();
+    const q = t.match(/\b(one|two|three|four|five|a|an|\d+)\b/);
+    if (q) $('qty').value = NUM[q[1]] || Number(q[1]) || 1;
+    if (/combo|snack/.test(t)) $('item').value = 'combo'; else if (/sandwich|meal/.test(t)) $('item').value = 'sandwich';
+    const f = t.match(/\bfor ([a-z ]+)$/);
+    if (f) $('name').value = f[1].replace(/\b\w/g, (c) => c.toUpperCase());
+    note(`Heard: “${t}”. Check the form, then add the order.`, 'ok'); refresh();
+  };
+  r.onerror = () => note('Could not hear that. Try again or type.', 'warn');
+  r.start();
+}
+$('voice').onclick = voice;
+
+cfg = await api('/api/config');
+$('country').value = 'US'; $('cur').value = 'USD';
+$('item').innerHTML = cfg.menu.map((m) => `<option value="${m.id}">${esc(m.name)} (₹${m.priceInr})</option>`).join('');
+refresh();
+window.addEventListener('online', refresh); window.addEventListener('offline', refresh);
+if (new URLSearchParams(location.search).get('voice')) voice();
+</script>
+</body>
+</html>

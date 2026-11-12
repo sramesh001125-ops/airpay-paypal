@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Card Authorisation</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap narrow" style="padding-top:24px">
+  <div class="card" id="box"><p class="muted">Loading…</p></div>
+  <p class="muted" style="margin-top:12px">RaMYOS AirPay · demo build · this form is a draft template for the airline's bank and counsel to review.</p>
+</main>
+<script type="module">
+import { LOGO, api, esc } from '/common.js';
+const token = location.pathname.split('/').pop();
+const box = document.getElementById('box');
+let demoOtp = '';
+async function render(msg = '', kind = '') {
+  let v;
+  try { v = await api(`/api/consent/${token}`); } catch (e) { box.innerHTML = `<h2>Link not valid</h2><p class="notice bad">${esc(e.message)}</p>`; return; }
+  const f = v.form;
+  const sections = f.sections.map((s) => `<h3 style="margin-top:14px">${esc(s.h)}</h3><p>${esc(s.p)}</p>`).join('');
+  let action = '';
+  if (v.status === 'ISSUED') {
+    action = `<div class="card" style="margin-top:14px">
+      <div class="row"><button class="btn" id="otp">Send me a one-time code</button>${demoOtp ? `<span class="badge warn">Demo code: ${esc(demoOtp)}</span>` : ''}</div>
+      <label for="code" style="margin-top:10px">One-time code</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+      <label class="row" style="margin-top:12px;gap:8px;color:var(--ink)"><input type="checkbox" id="tick" style="width:auto;min-height:0"> ${esc(f.declaration)}</label>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="ok">Confirm authorisation</button><button class="btn" id="no">No thanks, withdraw</button></div></div>`;
+  } else if (v.status === 'CONFIRMED') {
+    action = `<p class="notice ok">Authorised. Reference <b>${esc(f.consentId)}</b>. Show this reference to the crew, or it is attached to your order.</p>
+      <div class="row"><button class="btn" id="no">Withdraw this authorisation</button></div>`;
+  } else {
+    action = `<p class="notice bad">This authorisation is ${esc(v.status.toLowerCase())}.</p>`;
+  }
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${LOGO}<strong>AirPay</strong></span><span class="badge">${esc(f.consentId)}</span></div>
+    <h2 style="margin-top:14px">${esc(f.title)}</h2>
+    <p class="muted">Passenger ${esc(f.passenger)} · ${esc(f.payerType)} · form ${esc(f.version)}</p>
+    <p class="notice warn">${esc(f.notice)}</p>${sections}${msg ? `<p class="notice ${kind}" style="margin-top:12px">${esc(msg)}</p>` : ''}${action}`;
+  const otp = document.getElementById('otp');
+  if (otp) otp.onclick = async () => { try { const r = await api(`/api/consent/${token}/otp`, { method: 'POST' }); demoOtp = r.demoOtp || ''; render('A one-time code was sent to your phone.', 'ok'); } catch (e) { render(e.message, 'bad'); } };
+  const ok = document.getElementById('ok');
+  if (ok) ok.onclick = async () => {
+    try { await api(`/api/consent/${token}/confirm`, { method: 'POST', body: { otp: document.getElementById('code').value.trim(), tick: document.getElementById('tick').checked } }); demoOtp = ''; render('Thank you. Your authorisation is confirmed.', 'ok'); }
+    catch (e) { render(e.message, 'bad'); }
+  };
+  const no = document.getElementById('no');
+  if (no) no.onclick = async () => { try { await api(`/api/consent/${token}/revoke`, { method: 'POST' }); render('Withdrawn. Nothing will be charged under this form.', 'ok'); } catch (e) { render(e.message, 'bad'); } };
+}
+render();
+</script>
+</body>
+</html>

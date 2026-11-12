@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Rail Router</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap">
+  <section style="margin-top:20px">
+    <h1 style="font-size:1.8rem">Rail router</h1>
+    <p class="muted">Every eligible rail is priced. An AI agent proposes one; a rule guard accepts it only if it is within tolerance of the cheapest usable rail. Irreversible bank rails are capped by amount.</p>
+    <div class="card">
+      <div class="fields">
+        <div><label for="amount">Amount</label><input id="amount" type="number" step="0.01" value="4.70"></div>
+        <div><label for="cur">Currency</label><select id="cur"><option>USD</option><option>INR</option><option>EUR</option></select></div>
+        <div><label for="country">Buyer country</label>
+          <select id="country"><option>US</option><option>GB</option><option>DE</option><option>NL</option><option>BE</option><option>PL</option><option>AT</option><option>IT</option><option>FR</option><option>SG</option><option>AE</option><option>IN</option></select></div>
+        <div><label for="inst">Payer type</label>
+          <select id="inst"><option value="">Auto (India = UPI debit)</option><option value="intl">International (card, wallet, local bank)</option><option value="upi_debit">India UPI debit (add-on)</option></select></div>
+        <div><label for="ai">Pretend the AI proposed</label><select id="ai"><option value="">(use real agent)</option></select></div>
+      </div>
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="go">Rank rails</button></div>
+    </div>
+  </section>
+
+  <section id="out" style="display:none">
+    <div class="grid">
+      <div class="card"><div class="muted">Chosen rail</div><div class="stat" id="chosen"></div><div id="guard" class="muted"></div></div>
+      <div class="card"><div class="muted">Saved vs card, this order</div><div class="stat" id="saved"></div><div class="muted" id="savedPct"></div></div>
+    </div>
+    <div class="card tablewrap" style="margin-top:14px"><table><thead><tr><th>Rail</th><th>Merchant fee</th><th>Effective %</th><th>Saves vs card</th><th>Reversible</th><th>Settles</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="card" style="margin-top:14px">
+      <h3>Who funds it, and what that costs PayPal (illustrative)</h3>
+      <p class="muted">The merchant fee above is fixed by the rail. It does not change with the payer's funding source. What changes is the funding cost upstream: balance, then bank, then card for the shortfall only. This is PayPal's saving, not the merchant's.</p>
+      <div class="fields">
+        <div><label for="fbal">Simulated balance (USD)</label><input id="fbal" type="number" step="0.01" value="0"></div>
+        <div><label for="fbank">Simulated linked bank (USD)</label><input id="fbank" type="number" step="0.01" value="0"></div>
+      </div>
+      <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Case</th><th>Paid from</th><th>Merchant fee</th><th>Funding cost</th><th>If all card</th><th>Avoided</th></tr></thead><tbody id="fund"></tbody></table></div>
+      <p class="notice warn" id="fnote"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What would this save over a year?</h2>
+    <div class="card">
+      <div class="fields">
+        <div><label for="orders">Orders per day</label><input id="orders" type="number" value="2000"></div>
+        <div><label for="share">Share paid via the chosen rail %</label><input id="share" type="number" value="100"></div>
+      </div>
+      <p id="proj" class="stat" style="margin-top:12px">–</p>
+      <p class="notice warn">Illustrative only. It scales this one order's cost difference. Real savings depend on contracted rates, mix of buyers and dispute losses on irreversible rails.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fee table in use</h2>
+    <p class="muted" id="feenote"></p>
+    <div class="card tablewrap"><table><thead><tr><th>Rail</th><th>% fee</th><th>Fixed</th><th>Cross-border</th><th>FX</th><th>Countries</th></tr></thead><tbody id="fees"></tbody></table></div>
+  </section>
+</main>
+<script type="module">
+import { topbar, api, esc, usd } from '/common.js';
+topbar('router');
+const $ = (id) => document.getElementById(id);
+const cfg = await api('/api/config');
+$('ai').innerHTML += Object.entries(cfg.rails).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+$('feenote').textContent = cfg.feeNote;
+$('fees').innerHTML = Object.values(cfg.rails).map((r) => `<tr><td>${esc(r.label)}${r.simulated ? ' <span class="badge warn">simulated</span>' : ''}</td><td>${r.pct}%${r.cap ? ` (cap $${r.cap})` : ''}</td><td>${usd(r.fixed)}</td><td>+${r.xbPct}%</td><td>+${r.fxPct}%</td><td>${r.countries === '*' ? 'all' : r.countries.join(', ')}</td></tr>`).join('');
+let last = null;
+function project() {
+  if (!last) return;
+  const orders = Number($('orders').value) || 0, share = (Number($('share').value) || 0) / 100;
+  const perOrder = last.savedUsd;
+  const day = perOrder * orders * share;
+  $('proj').textContent = `${usd(day)} per day · ${usd(day * 365)} per year`;
+}
+$('go').onclick = async () => {
+  try {
+    const r = await api('/api/rails/simulate', { method: 'POST', body: { amount: Number($('amount').value), currency: $('cur').value, country: $('country').value, instrument: $('inst').value || undefined, aiOverride: $('ai').value || undefined, funds: { balanceUsd: Number($('fbal').value) || 0, bankUsd: Number($('fbank').value) || 0 } } });
+    const ch = r.ranked.find((x) => x.rail === r.chosen);
+    $('out').style.display = 'block';
+    $('chosen').textContent = ch.label;
+    const g = r.guard;
+    $('guard').textContent = g.aiProposed ? `AI proposed ${g.aiProposed} (${g.source}): ${g.accepted ? 'accepted' : 'overridden'}. ${g.note}` : 'No AI proposal.';
+    last = { savedUsd: ch.savingsVsCardUsd };
+    $('saved').textContent = usd(ch.savingsVsCardUsd);
+    const card = r.ranked.find((x) => x.rail === 'card');
+    $('savedPct').textContent = card && card.costUsd ? `${((ch.savingsVsCardUsd / card.costUsd) * 100).toFixed(0)}% cheaper than card` : '';
+    $('rows').innerHTML = r.ranked.map((x) => `<tr><td>${esc(x.label)}${x.rail === r.chosen ? ' ✅' : ''}${x.simulated ? ' <span class="badge warn">simulated</span>' : ''}</td><td>${usd(x.costUsd)}</td><td>${x.effectivePct}%</td><td>${usd(x.savingsVsCardUsd)}</td><td>${x.reversible ? 'yes' : 'no'}</td><td>${esc(x.settle)}</td><td>${x.blocked ? `<span class="badge bad">${esc(x.blockReason)}</span>` : '<span class="badge ok">usable</span>'}</td></tr>`).join('');
+    const fee = ch.merchantFeeUsd;
+    const rowsF = [...(r.funding.chosen ? [{ name: 'Your simulated funds', ...r.funding.chosen }] : []), ...r.funding.scenarios];
+    $('fund').innerHTML = rowsF.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.sources.map((s) => `${esc(s.label)} ${usd(s.amountUsd)}`).join(' + ')}</td><td>${usd(fee)}</td><td>${usd(x.fundingCostUsd)}</td><td>${usd(x.fundingCostAllCardUsd)}</td><td>${usd(x.fundingCostAvoidedUsd)}</td></tr>`).join('');
+    $('fnote').textContent = r.funding.note;
+    project();
+  } catch (e) { alert(e.message); }
+};
+$('orders').oninput = project; $('share').oninput = project;
+</script>
+</body>
+</html>

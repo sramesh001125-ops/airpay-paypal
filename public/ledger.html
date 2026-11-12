@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Ledger</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap">
+  <section style="margin-top:20px">
+    <h1 style="font-size:1.8rem">Ledger and lender desk</h1>
+    <p class="muted">India UPI-debit orders unpaid after the link window go first to the passenger's backup credit card if they opted in; passengers with no card (or a declined card) go to the lender. Nothing about credit is shown to the passenger until the lender confirms. International card payers have no lender: their link stays open longer and, if it expires, the order shows as expired unpaid.</p>
+    <div class="card">
+      <h3>Time machine (demo clock)</h3>
+      <div class="row">
+        <button class="btn" data-m="61">+61 min (link expires)</button>
+        <button class="btn" data-m="30">+30 min</button>
+        <button class="btn" data-m="1440">+1 day</button>
+        <button class="btn" data-m="11520">+8 days (past due)</button>
+        <button class="btn" id="sweep">Run sweep</button>
+        <span class="muted" id="clock"></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid" id="stats"></div>
+  </section>
+
+  <section>
+    <h2>Orders</h2>
+    <div class="card tablewrap"><table><thead><tr><th>Order</th><th>Passenger</th><th>Amount</th><th>Rail</th><th>State</th><th>Due</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Passenger savings accounts (simulated)</h2>
+    <div class="card tablewrap"><table><thead><tr><th>Contact</th><th>Balance</th><th>Outstanding</th><th>Add money</th></tr></thead><tbody id="acc"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Savings report</h2>
+    <div class="card" id="sav"></div>
+  </section>
+  <p id="err" class="notice bad" style="display:none"></p>
+</main>
+<script type="module">
+import { topbar, api, esc, usd, inr, stateBadge } from '/common.js';
+topbar('ledger');
+const $ = (id) => document.getElementById(id);
+const fail = (e) => { $('err').style.display = 'block'; $('err').textContent = e.message; };
+async function load() {
+  try {
+    $('err').style.display = 'none';
+    const [orders, led, sav] = await Promise.all([api('/api/orders'), api('/api/ledger'), api('/api/report/savings')]);
+    $('clock').textContent = led.clockOffsetMin ? `Demo clock is +${led.clockOffsetMin} min ahead` : 'Demo clock is real time';
+    const n = (s) => led.states.find((x) => x.state === s)?.n || 0;
+    $('stats').innerHTML = [['Awaiting payment', n('LINK_SENT')], ['Paid', n('PAID') + n('REPAID')], ['Backup card (pending)', n('CARD_FALLBACK_PENDING')], ['With lender (pending)', n('DEFERRED_PENDING_BANK')], ['Pay later (active)', n('DEFERRED_ACTIVE')], ['Overdue', n('OVERDUE')], ['Expired unpaid (international, no lender)', n('EXPIRED_UNPAID')], ['Rejected or blocked', n('REJECTED_LIMIT') + n('REJECTED_AMOUNT') + n('BLOCKED_DUE') + n('BANK_DECLINED') + n('BLOCKED_SHIELD')]]
+      .map(([t, v]) => `<div class="card"><div class="muted">${t}</div><div class="stat">${v}</div></div>`).join('');
+    $('rows').innerHTML = orders.map((o) => `<tr><td><span class="mono">${esc(o.id)}</span></td><td>${esc(o.buyer_name)}<div class="muted">${esc(o.buyer_country)} · ${o.instrument === 'upi_debit' ? 'UPI debit' : 'international'}</div></td>
+      <td>${esc(o.currency)} ${o.amount.toFixed(2)}<div class="muted">${inr(o.amount_inr)}</div></td><td>${esc(o.rail || '-')}</td><td>${stateBadge(o.state)}</td>
+      <td>${o.due_at ? new Date(o.due_at).toLocaleString() : '-'}</td>
+      <td>${o.state === 'CARD_FALLBACK_PENDING' ? `<button class="btn small good" data-ca="${o.id}">Card charged</button> <button class="btn small bad" data-cd="${o.id}">Card declined</button>` : ''}
+          ${o.state === 'DEFERRED_PENDING_BANK' ? `<button class="btn small good" data-a="${o.id}">Lender approves</button> <button class="btn small bad" data-d="${o.id}">Declines</button>` : ''}
+          ${o.state === 'LINK_SENT' ? `<button class="btn small" data-l="${o.id}">Show QR</button> <button class="btn small primary" data-cp="${o.id}">Check payment status</button> <button class="btn small" data-tp="${o.id}" title="Sandbox only: records a test payment on the PayPal invoice">Record test payment</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No orders yet.</td></tr>';
+    $('acc').innerHTML = led.accounts.map((a) => `<tr><td class="mono">${esc(a.contact)}</td><td>${inr(a.balance_inr)}</td><td>${inr(a.outstanding_inr)}</td>
+      <td><div class="row"><input style="width:110px" type="number" value="${Math.max(a.outstanding_inr, 100)}" id="t_${esc(a.key)}"><button class="btn small primary" data-t="${esc(a.key)}">Top up</button></div></td></tr>`).join('') || '<tr><td colspan="4" class="muted">No accounts yet. They appear when the lender approves a pay-later order.</td></tr>';
+    const fu = sav.funding;
+    const src = Object.entries(fu.byFundingSourceUsd).map(([k, v]) => `${esc(k)} ${usd(v)}`).join(' · ') || 'none settled yet';
+    $('sav').innerHTML = `<p class="notice warn">All figures below are ILLUSTRATIVE, from editable tables in config.js. They are not PayPal's real fees or costs.</p>
+      <h3>Merchant fee (what the airline pays; the same whichever source funds the payment)</h3>
+      <div class="grid"><div><div class="muted">Orders priced</div><div class="stat">${sav.orders}</div></div><div><div class="muted">Fee on chosen rails</div><div class="stat">${usd(sav.merchantFeeUsd)}</div></div>
+      <div><div class="muted">Fee if all on card</div><div class="stat">${usd(sav.merchantFeeIfCardUsd)}</div></div><div><div class="muted">Merchant fee saved</div><div class="stat">${usd(sav.merchantFeeSavedUsd)} (${sav.merchantFeeSavedPct}%)</div></div></div>
+      <h3 style="margin-top:16px">PayPal funding cost (borne upstream, not by the merchant)</h3>
+      <div class="grid"><div><div class="muted">Settled orders</div><div class="stat">${fu.settledOrders}</div></div><div><div class="muted">Funding cost as paid</div><div class="stat">${usd(fu.fundingCostUsd)}</div></div>
+      <div><div class="muted">If all on card</div><div class="stat">${usd(fu.fundingCostIfAllCardUsd)}</div></div><div><div class="muted">Funding cost avoided</div><div class="stat">${usd(fu.fundingCostAvoidedUsd)} (${fu.fundingCostAvoidedPct}%)</div></div></div>
+      <p class="muted">Paid from: ${src}. Charged to card for shortfall only: ${usd(fu.shortfallChargedToCardUsd)}.</p><p class="muted">${esc(sav.note)}</p>`;
+    document.querySelectorAll('[data-a]').forEach((b) => b.onclick = () => act(`/api/ledger/bank-confirm/${b.dataset.a}`, { approve: true }));
+    document.querySelectorAll('[data-ca]').forEach((b) => b.onclick = () => act(`/api/ledger/card-fallback/${b.dataset.ca}`, { approve: true }));
+    document.querySelectorAll('[data-cd]').forEach((b) => b.onclick = () => act(`/api/ledger/card-fallback/${b.dataset.cd}`, { approve: false }));
+    document.querySelectorAll('[data-d]').forEach((b) => b.onclick = () => act(`/api/ledger/bank-confirm/${b.dataset.d}`, { approve: false }));
+    document.querySelectorAll('[data-t]').forEach((b) => b.onclick = () => act('/api/ledger/topup', { contact: b.dataset.t, amountInr: Number(document.getElementById('t_' + b.dataset.t).value) }));
+    document.querySelectorAll('[data-cp]').forEach((b) => b.onclick = () => act(`/api/orders/${b.dataset.cp}/check-payment`, {}, true));
+    document.querySelectorAll('[data-tp]').forEach((b) => b.onclick = () => act(`/api/orders/${b.dataset.tp}/test-payment`, {}, true));
+    document.querySelectorAll('[data-l]').forEach((b) => b.onclick = async () => { const l = await api(`/api/orders/${b.dataset.l}/qr-link`); window.open(l.payUrl, '_blank'); });
+  } catch (e) { fail(e); }
+}
+async function act(path, body, show) {
+  let r;
+  try { r = await api(path, { method: 'POST', body }); } catch (e) { fail(e); return; }
+  await load();
+  if (show && r) {
+    $('err').style.display = 'block';
+    $('err').textContent = `PayPal status: ${r.paypalStatus || 'n/a'} · App state: ${r.state || '-'}${r.note ? ' · ' + r.note : ''}${r.mismatch ? ' · AMOUNT MISMATCH' : ''}`;
+  }
+}
+document.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => act('/api/demo/advance', { minutes: Number(b.dataset.m) }));
+$('sweep').onclick = () => act('/api/ledger/sweep', {});
+load();
+</script>
+</body>
+</html>

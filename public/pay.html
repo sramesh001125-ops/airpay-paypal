@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Payment</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap narrow" style="padding-top:24px">
+  <div class="card" id="box"><p class="muted">Loading…</p></div>
+  <p class="muted" style="margin-top:12px">RaMYOS AirPay · demo build · payments are simulated unless PayPal sandbox is configured.</p>
+</main>
+<script type="module">
+import { LOGO, api, esc } from '/common.js';
+const token = location.pathname.split('/').pop();
+const box = document.getElementById('box');
+let timer;
+async function render() {
+  let v;
+  try { v = await api(`/api/pay/${token}`); } catch (e) { box.innerHTML = `<h2>Link not valid</h2><p class="notice bad">${esc(e.message)}</p>`; return; }
+  const items = v.items.map((i) => `${esc(i.name)} ×${i.qty}`).join(', ');
+  let body = '';
+  if (v.status === 'AWAITING_PAYMENT') {
+    body = `<p>Please pay before you leave the aircraft.</p>
+      <button class="btn primary" id="pay" ${v.canPay ? '' : 'disabled'}>Pay ${esc(v.currency)} ${Number(v.amount).toFixed(2)}</button>
+      <p class="muted">Pay using: ${esc(v.rail || 'best available method')}. Link valid until ${new Date(v.expiresAt).toLocaleString()}.</p>`;
+  } else if (v.status === 'PAID' || v.status === 'REPAID') {
+    body = `<p class="notice ok">${esc(v.message)}</p>`;
+  } else if (v.status === 'PENDING') {
+    body = `<p class="notice">${esc(v.message)}</p>`;
+  } else if (v.status === 'PAY_LATER' || v.status === 'OVERDUE') {
+    body = `<p class="notice ${v.status === 'OVERDUE' ? 'bad' : 'warn'}">${esc(v.message)}</p>
+      <table><tr><td>Purchase</td><td>₹${Number(v.totalDueInr - v.flatChargeInr).toFixed(2)}</td></tr>
+      <tr><td>Flat charge</td><td>₹${Number(v.flatChargeInr).toFixed(2)}</td></tr>
+      <tr><td><b>Total due</b></td><td><b>₹${Number(v.totalDueInr).toFixed(2)}</b></td></tr>
+      <tr><td>Due by</td><td>${new Date(v.dueAt).toLocaleString()}</td></tr></table>`;
+  } else {
+    body = `<p class="notice bad">${esc(v.message || v.status)}</p>`;
+  }
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px">${LOGO}<strong>AirPay</strong></span><span class="badge">${esc(v.orderId)}</span></div>
+    <h2 style="margin-top:14px">${esc(v.buyer)}, your on-board purchase</h2><p>${items}<br><span class="muted">Flight ${esc(v.flight || '')}</span></p>${body}`;
+  const pay = document.getElementById('pay');
+  if (pay) pay.onclick = async () => {
+    pay.disabled = true;
+    try { const r = await api(`/api/pay/${token}/start`, { method: 'POST' }); location.href = r.url; }
+    catch (e) { alert(e.message); pay.disabled = false; }
+  };
+  clearTimeout(timer);
+  if (['AWAITING_PAYMENT', 'PENDING'].includes(v.status)) timer = setTimeout(render, 4000);
+}
+render();
+</script>
+</body>
+</html>

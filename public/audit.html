@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AirPay Audit</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap">
+  <section style="margin-top:20px">
+    <h1 style="font-size:1.8rem">Audit</h1>
+    <p class="muted">The audit agent re-checks every order with fixed rules. An AI model may summarise the result in plain language, but the rules decide. Every event is hash-chained so edits to history are detectable.</p>
+    <div class="row">
+      <button class="btn primary" id="verify">Verify log integrity</button>
+      <button class="btn" id="all">Review all orders</button>
+      <span id="chain"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Order reviews</h2>
+    <div class="card tablewrap"><table><thead><tr><th>Order</th><th>State</th><th>Risk</th><th>Flags</th><th></th></tr></thead><tbody id="rev"><tr><td colspan="5" class="muted">Press “Review all orders”.</td></tr></tbody></table></div>
+    <p id="sum" class="notice" style="display:none;margin-top:12px"></p>
+  </section>
+
+  <section>
+    <h2>Event log (latest first)</h2>
+    <div class="card tablewrap"><table><thead><tr><th>#</th><th>Time</th><th>Actor</th><th>Event</th><th>Order</th><th>Details</th><th>Hash</th></tr></thead><tbody id="log"></tbody></table></div>
+  </section>
+  <p id="err" class="notice bad" style="display:none"></p>
+</main>
+<script type="module">
+import { topbar, api, esc, stateBadge } from '/common.js';
+topbar('audit');
+const $ = (id) => document.getElementById(id);
+const fail = (e) => { $('err').style.display = 'block'; $('err').textContent = e.message; };
+const risk = (r) => `<span class="badge ${r === 'high' ? 'bad' : r === 'medium' ? 'warn' : 'ok'}">${r}</span>`;
+async function log() {
+  try {
+    const rows = await api('/api/audit?limit=150');
+    $('log').innerHTML = rows.map((r) => `<tr><td>${r.seq}</td><td class="mono">${esc(r.ts.replace('T', ' ').slice(0, 19))}</td><td>${esc(r.actor)}</td><td><b>${esc(r.type)}</b></td><td class="mono">${esc(r.order_id || '')}</td><td class="mono">${esc(JSON.stringify(r.payload)).slice(0, 140)}</td><td class="mono">${esc(r.hash.slice(0, 8))}</td></tr>`).join('');
+  } catch (e) { fail(e); }
+}
+$('verify').onclick = async () => {
+  try {
+    const v = await api('/api/audit/verify');
+    $('chain').innerHTML = v.ok ? `<span class="badge ok">Chain intact (${v.checked} events)</span>` : `<span class="badge bad">Chain broken at event ${v.brokenAtSeq}</span>`;
+  } catch (e) { fail(e); }
+};
+$('all').onclick = async () => {
+  try {
+    const rs = await api('/api/audit/review-all', { method: 'POST' });
+    $('rev').innerHTML = rs.map((r) => `<tr><td class="mono">${esc(r.orderId)}</td><td>${stateBadge(r.state)}</td><td>${risk(r.risk)}</td>
+      <td>${r.flags.map((f) => `<div><span class="badge ${f.severity === 'high' ? 'bad' : f.severity === 'medium' ? 'warn' : ''}">${esc(f.code)}</span> <span class="muted">${esc(f.msg)}</span></div>`).join('') || '<span class="muted">No flags</span>'}</td>
+      <td><button class="btn small" data-o="${esc(r.orderId)}">Explain</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No orders.</td></tr>';
+    document.querySelectorAll('[data-o]').forEach((b) => b.onclick = async () => {
+      const r = await api(`/api/audit/review/${b.dataset.o}`); $('sum').style.display = 'block'; $('sum').textContent = r.summary;
+    });
+    log();
+  } catch (e) { fail(e); }
+};
+log();
+</script>
+</body>
+</html>

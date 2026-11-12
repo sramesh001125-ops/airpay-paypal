@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RaMYOS AirPay</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="wrap">
+  <section class="hero" style="margin-top:0">
+    <div class="row" style="margin-bottom:18px">
+      <span id="logo"></span>
+      <div><strong style="font-size:1.2rem">RaMYOS AirPay</strong><div class="muted" id="tag"></div></div>
+    </div>
+    <h1>Take the order with no network. Get paid when you land.</h1>
+    <p>AirPay lets cabin crew record purchases offline, then settles each one over the cheapest PayPal-connected rail for the passenger's country, cutting card cost across PayPal's markets. India UPI debit is an add-on with a lender-backed pay-later fallback. Every order is screened first and logged in a tamper-evident audit trail.</p>
+    <div class="row" style="margin-top:18px">
+      <a class="btn primary" href="#workspaces">Enter workspaces</a>
+      <button class="btn" id="signin">Sign in</button>
+      <a class="btn" href="/crew.html?voice=1">🎤 Voice</a>
+      <span class="muted" id="who"></span>
+    </div>
+    <p class="notice warn" style="margin-top:18px;max-width:720px">Demo build for the PayPal AI Hackathon. Payments are simulated unless PayPal sandbox keys are configured. The fee table is illustrative and the lender and UPI-style legs are simulated.</p>
+  </section>
+
+  <section>
+    <div class="grid">
+      <div class="card"><h3>What is it?</h3><p>A payment layer for places with slow or no network, starting with in-flight sales. Orders are captured on a crew device, then settled after landing through PayPal's sandbox, using bank-based rails where they cost less than cards. International buyers pay by card, PayPal wallet or a local bank rail; India's UPI debit is an add-on.</p></div>
+      <div class="card"><h3>What can I do?</h3><p>Take offline orders within device limits for each payer type, see which rail is cheapest for each buyer and why, watch a single-use QR get burned only on verified payment, see the SHIELD pre-screen, run the India lender fallback, and check every step in the audit log.</p></div>
+      <div class="card"><h3>Where next?</h3><p>Real lender and bank partners, a live UPI-style interoperability leg, the full SHIELD service behind the adapter, more places than aircraft (trains, ships, remote areas), and PayPal's agent tools for checkout by conversation.</p></div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <h2>End to end, by phase</h2>
+    <div class="phase"><div class="n">1</div><div><h3>Order offline on board</h3><p class="muted">Crew device captures items, buyer, amount and payment type with no connection. Per-order and per-device limits for that payment type apply on the device.</p></div><a class="btn primary" href="/crew.html">Open workspace</a></div>
+    <div class="phase"><div class="n">2</div><div><h3>Route on landing</h3><p class="muted">Orders sync once and pass the SHIELD pre-screen. An AI agent proposes the rail; a rule guard accepts or overrides it using a cost table and an irreversibility cap.</p></div><a class="btn primary" href="/router.html">Open workspace</a></div>
+    <div class="phase"><div class="n">3</div><div><h3>Pay by link or QR</h3><p class="muted">The passenger pays before leaving. The QR burns only when a signed payment event confirms settlement.</p></div><a class="btn primary" href="#" id="openPay">Open workspace</a></div>
+    <div class="phase"><div class="n">4</div><div><h3>India pay-later fallback (add-on)</h3><p class="muted">For UPI-debit passengers only: if the savings-account payment is not made, the passenger's confirmed backup credit card is charged first (its own credit line, no loan). Passengers with no card (or a declined card) go to the lender, who settles the airline and books a short overdraft on the passenger's own savings account (flat charge, 7 days maximum, auto-debit). International card payers with a confirmed consent are charged the same way; without one they keep a longer link and have no overdraft.</p></div><a class="btn primary" href="/ledger.html">Open workspace</a></div>
+    <div class="phase"><div class="n">5</div><div><h3>Settle and audit</h3><p class="muted">A hash-chained log and an audit agent check limits, rails, QR state, lender timing and amounts.</p></div><a class="btn primary" href="/audit.html">Open workspace</a></div>
+  </section>
+
+  <section id="workspaces">
+    <h2>All workspaces</h2>
+    <div class="grid">
+      <a class="card" href="/crew.html" style="text-decoration:none;color:inherit"><h3>Crew device</h3><p class="muted">Offline order queue, voice entry, sync.</p></a>
+      <a class="card" href="#" id="openPay2" style="text-decoration:none;color:inherit"><h3>Passenger pay page</h3><p class="muted">Opens the latest order's pay page.</p></a>
+      <a class="card" href="/router.html" style="text-decoration:none;color:inherit"><h3>Rail router</h3><p class="muted">Cost per rail, AI guard, savings estimate.</p></a>
+      <a class="card" href="/ledger.html" style="text-decoration:none;color:inherit"><h3>Ledger and lender desk</h3><p class="muted">States, approvals, top-ups, time machine.</p></a>
+      <a class="card" href="/audit.html" style="text-decoration:none;color:inherit"><h3>Audit</h3><p class="muted">Chain check, order reviews, event log.</p></a>
+    </div>
+  </section>
+
+  <footer>RaMYOS AirPay · hackathon demo · see README for what is simulated and what is real.</footer>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog">
+    <h3>Demo sign-in</h3>
+    <p class="muted">No real authentication in this demo. Pick a role to label your session. If the server has an ADMIN_KEY, enter it to use the ledger and audit screens.</p>
+    <label for="r">Role</label>
+    <select id="r"><option>Cabin crew</option><option>Passenger</option><option>Airline finance</option><option>Lender</option><option>Auditor</option></select>
+    <label for="k" style="margin-top:10px">Admin key (optional)</label>
+    <input id="k" type="password" autocomplete="off">
+    <div class="row" style="margin-top:14px"><button class="btn primary" value="ok" id="save">Save</button><button class="btn" value="cancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<script type="module">
+import { LOGO, TAGLINE, api, role } from '/common.js';
+document.getElementById('logo').innerHTML = LOGO;
+document.getElementById('tag').textContent = TAGLINE;
+const who = document.getElementById('who');
+const show = () => { who.textContent = role() ? `Signed in as: ${role()}` : ''; };
+show();
+const dlg = document.getElementById('dlg');
+document.getElementById('signin').onclick = () => dlg.showModal();
+document.getElementById('save').onclick = () => {
+  try {
+    localStorage.setItem('airpayRole', document.getElementById('r').value);
+    localStorage.setItem('airpayAdminKey', document.getElementById('k').value);
+  } catch {}
+  show();
+};
+async function openPay(e) {
+  e.preventDefault();
+  try {
+    const orders = await api('/api/orders');
+    const o = orders.find((x) => x.state !== 'REJECTED_LIMIT' && x.state !== 'REJECTED_AMOUNT' && x.state !== 'BLOCKED_DUE' && x.state !== 'BLOCKED_SHIELD');
+    if (!o) return alert('No orders yet. Create one in the Crew workspace first.');
+    const l = await api(`/api/orders/${o.id}/qr-link`);
+    location.href = l.payUrl.replace(location.origin, '');
+  } catch (err) { alert(err.message); }
+}
+document.getElementById('openPay').onclick = openPay;
+document.getElementById('openPay2').onclick = openPay;
+</script>
+</body>
+</html>
