@@ -63,7 +63,7 @@ For Indian passengers the router can offer a UPI payment link through Razorpay. 
 ## Licence
 AGPL-3.0 (`LICENSE`). Judges, reviewers and developers are welcome to run, test and study this code under the AGPL-3.0. Commercial licences are available by separate agreement.
 
-**Patent pending.** Indian provisional patent application no. 202641135327, filed 12 November 2026. Judges, organisers and sponsors of the PayPal AI Hackathon are expressly welcome to view, run, test and evaluate all code. Commercial use in closed products requires a separate licence from the applicant, S. Ramesh. Contact: [ADD CONTACT EMAIL].
+**Patent pending.** Indian provisional patent application no. 202641135327, filed 12 November 2026. Judges, organisers and sponsors of the PayPal AI Hackathon are expressly welcome to view, run, test and evaluate all code. Commercial use in closed products requires a separate licence from the applicant, S. Ramesh. Contact: sramesh001125@gmail.com.
 
 ## SHIELD adapter
 `src/shield.js` is only the integration point. Request: `{ deviceId, contactHash, country, instrument, amountUsd }`. Response: `{ action: 'allow'|'review'|'block', reasons: [] }`. Set `SHIELD_URL` (and optionally `SHIELD_KEY`) to call your own SHIELD service; otherwise built-in stub rules run (contact format, 24-hour velocity). Keep the real SHIELD outside this open repository.
