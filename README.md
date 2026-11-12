@@ -1,4 +1,4 @@
-# RaMYOS AirPay on PayPal rails
+# AirPay on PayPal rails
 
 Take orders with no network, get paid when you land. Crew record purchases offline; after landing each order is settled over the cheapest PayPal-connected rail; unpaid orders fall back to a lender-backed pay-later on the passenger's own savings account; every step lands in a hash-chained audit log.
 
@@ -58,12 +58,12 @@ The webhook URL must be reachable from the internet (deploy, or use a tunnel).
 For Indian passengers the router can offer a UPI payment link through Razorpay. `RAZORPAY_MODE=mock` simulates it locally with no keys; `RAZORPAY_MODE=test` uses Razorpay test-mode keys (written but not yet run against Razorpay). See `docs/RAZORPAY_CONNECTOR_NOTE.md`. The rail's cost in the fee table is a placeholder, not Razorpay's pricing.
 
 ## Files
-`src/engine.js` (core), `src/rails.js`, `src/qr.js`, `src/audit.js`, `src/paypal.js`, `src/ai.js`, `src/server.js`, `src/config.js`, `public/*` (landing page follows the RaMYOS pattern), `test/engine.test.js`.
+`src/engine.js` (core), `src/rails.js`, `src/qr.js`, `src/audit.js`, `src/paypal.js`, `src/ai.js`, `src/server.js`, `src/config.js`, `public/*` (landing page), `test/engine.test.js`.
 
 ## Licence
 AGPL-3.0 (`LICENSE`). Judges, reviewers and developers are welcome to run, test and study this code under the AGPL-3.0. Commercial licences are available by separate agreement.
 
-**Patent pending.** Indian provisional patent application no. 202641135327, filed 12 November 2026. Judges, organisers and sponsors of the PayPal AI Hackathon are expressly welcome to view, run, test and evaluate all code. Commercial use in closed products requires a separate licence. Contact: [ADD CONTACT EMAIL].
+**Patent pending.** Indian provisional patent application no. 202641135327, filed 12 November 2026. Judges, organisers and sponsors of the PayPal AI Hackathon are expressly welcome to view, run, test and evaluate all code. Commercial use in closed products requires a separate licence from the applicant, S. Ramesh. Contact: [ADD CONTACT EMAIL].
 
 ## SHIELD adapter
 `src/shield.js` is only the integration point. Request: `{ deviceId, contactHash, country, instrument, amountUsd }`. Response: `{ action: 'allow'|'review'|'block', reasons: [] }`. Set `SHIELD_URL` (and optionally `SHIELD_KEY`) to call your own SHIELD service; otherwise built-in stub rules run (contact format, 24-hour velocity). Keep the real SHIELD outside this open repository.

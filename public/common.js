@@ -33,7 +33,7 @@ export function topbar(active) {
   ];
   const el = document.createElement('div');
   el.className = 'topbar';
-  el.innerHTML = `<div class="in"><a class="brand" href="/">${LOGO}<span>RaMYOS AirPay<small>${TAGLINE}</small></span></a>
+  el.innerHTML = `<div class="in"><a class="brand" href="/">${LOGO}<span>AirPay<small>${TAGLINE}</small></span></a>
     <nav class="nav">${links.map(([h, t, k]) => `<a href="${h}" class="${k === active ? 'on' : ''}">${t}</a>`).join('')}</nav>
     <span id="modeBadge" class="badge">…</span></div>`;
   document.body.prepend(el);

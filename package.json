@@ -1,7 +1,7 @@
 {
-  "name": "ramyos-airpay-paypal",
+  "name": "airpay-paypal",
   "version": "0.1.0",
-  "description": "RaMYOS AirPay on PayPal rails: offline order capture, rail-cost routing, single-use QR, pay-later fallback, audit agent",
+  "description": "AirPay on PayPal rails: offline order capture, rail-cost routing, single-use QR, pay-later fallback, audit agent",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
