@@ -26,7 +26,7 @@ pre{background:#101828;color:#d7e3ff;padding:10px;border-radius:8px;overflow:aut
 <div class="phones"><div class="phone"><h3>Payer phone</h3><div id="pp"></div></div><div class="phone"><h3>Seller phone</h3><div id="sp"></div></div></div>
 <div class="card"><b>Result</b><pre id="log">Create an order to begin.</pre></div>
 <script>
-const $=id=>document.getElementById(id);let order=null,chal=null;
+const $=id=>document.getElementById(id);let order=null,chal=null,base={};
 const H=()=>{const h={'content-type':'application/json'};try{const k=localStorage.getItem('airpayAdminKey');if(k)h['x-admin-key']=k}catch(e){}return h};
 async function call(p,b){const r=await fetch(p,{method:b?'POST':'GET',headers:H(),body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j}
 const log=x=>$('log').textContent=typeof x==='string'?x:JSON.stringify(x,null,2);
@@ -34,12 +34,12 @@ async function refresh(){
  if(order){const o=await call('/api/orders/'+order);$('st').textContent=o.state;$('st').className='badge '+(o.state==='PAID'?'ok':'');const s=await call('/api/sms/status/'+order);const c=s.challenges.slice(-1)[0];if(c){chal=c.id;$('rt').textContent=c.route+' ('+c.status+')'}}
  for(const [el,who] of [['pp',$('payer').value],['sp',$('seller').value]]){
   const {messages}=await call('/api/sms/outbox?to='+encodeURIComponent(who));const box=$(el);box.innerHTML='';
-  for(const m of messages.slice(-4)){const d=document.createElement('div');d.className='msg';const t=document.createElement('div');t.textContent=m.text;d.appendChild(t);
+  for(const m of messages.slice(base[who]||0)){const d=document.createElement('div');d.className='msg';const t=document.createElement('div');t.textContent=m.text;d.appendChild(t);
    if(m.kind.startsWith('verify')&&m.demo){const b=document.createElement('button');b.textContent=m.text.includes('Reply AIRPAY')?'Reply with the text':'Tap link (one tap)';b.onclick=async()=>{try{log(await call('/api/sms/inbound',{from:who,body:m.demo.replyBody}))}catch(e){log(e.message)}refresh()};d.appendChild(b)}
    if(m.kind==='pay'&&m.demo){const b=document.createElement('button');b.textContent='Payer approves with UPI PIN on the network (simulated)';b.onclick=async()=>{try{log(await call('/api/sms/mock-settlement',{ident:m.demo.ident,amountInr:m.demo.amountInr,eventId:'demo-'+Date.now()}))}catch(e){log(e.message)}refresh()};d.appendChild(b)}
    box.appendChild(d)}}
 }
-$('mk').onclick=async()=>{try{const r=await call('/api/crew/sync',{deviceId:'DEV-DEMO-'+Date.now(),flightNo:'6E-DEMO',orders:[{clientId:'d'+Date.now(),createdOfflineAt:Date.now(),items:[{id:'sandwich',qty:1}],amount:400,currency:'INR',buyer:{name:'Demo Payer',contact:$('payer').value,country:'IN'}}]});order=r.results[0].orderId;$('oid').textContent=order;$('iss').disabled=false;log(r.results[0])}catch(e){log(e.message)}refresh()};
+$('mk').onclick=async()=>{try{for(const w of [$('payer').value,$('seller').value]){base[w]=(await call('/api/sms/outbox?to='+encodeURIComponent(w))).messages.length}$('rt').textContent='-';const r=await call('/api/crew/sync',{deviceId:'DEV-DEMO-'+Date.now(),flightNo:'6E-DEMO',orders:[{clientId:'d'+Date.now(),createdOfflineAt:Date.now(),items:[{id:'sandwich',qty:1}],amount:400,currency:'INR',buyer:{name:'Demo Payer',contact:$('payer').value,country:'IN'}}]});order=r.results[0].orderId;$('oid').textContent=order;$('iss').disabled=false;log(r.results[0])}catch(e){log(e.message)}refresh()};
 $('iss').onclick=async()=>{try{const r=await call('/api/sms/issue',{orderId:order,capability:$('cap').value,twoSided:$('two').checked,payeeNumber:$('two').checked?$('seller').value:undefined});chal=r.challengeId;$('esc').disabled=false;$('bad').disabled=false;log(r)}catch(e){log(e.message)}refresh()};
 $('esc').onclick=async()=>{try{log(await call('/api/sms/escalate',{challengeId:chal}))}catch(e){log(e.message)}refresh()};
 $('bad').onclick=async()=>{const {messages}=await call('/api/sms/outbox?to='+encodeURIComponent($('payer').value));const m=messages.filter(x=>x.kind==='verify').pop();try{log(await call('/api/sms/inbound',{from:'+919333300000',body:m.demo.replyBody}))}catch(e){log(e.message)}refresh()};
