@@ -101,6 +101,48 @@ CREATE TABLE IF NOT EXISTS audit_log (
   prev_hash TEXT NOT NULL,
   hash TEXT NOT NULL
 );
+
+-- SMS return-code route (mock gateway): one-time codes bound to an order, single-use payee identifiers, route memory.
+CREATE TABLE IF NOT EXISTS sms_challenges (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  claimed_hash TEXT NOT NULL,
+  payee_hash TEXT,
+  code_hash TEXT NOT NULL,
+  ref_hash TEXT NOT NULL,
+  payee_code_hash TEXT,
+  two_sided INTEGER DEFAULT 0,
+  status TEXT NOT NULL,
+  route_idx INTEGER DEFAULT 0,
+  route_sent_at INTEGER,
+  amount_inr REAL NOT NULL,
+  exp INTEGER NOT NULL,
+  tries INTEGER DEFAULT 0,
+  payer_ok INTEGER DEFAULT 0,
+  payee_ok INTEGER DEFAULT 0,
+  created_at TEXT,
+  verified_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sms_code ON sms_challenges(code_hash);
+CREATE INDEX IF NOT EXISTS idx_sms_ref ON sms_challenges(ref_hash);
+CREATE INDEX IF NOT EXISTS idx_sms_payee ON sms_challenges(payee_code_hash);
+CREATE INDEX IF NOT EXISTS idx_sms_claimed ON sms_challenges(claimed_hash);
+
+CREATE TABLE IF NOT EXISTS payee_ids (
+  ident TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  amount_inr REAL NOT NULL,
+  status TEXT NOT NULL,
+  exp INTEGER NOT NULL,
+  created_at TEXT,
+  burned_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS route_memory (
+  contact_hash TEXT PRIMARY KEY,
+  route_idx INTEGER NOT NULL,
+  updated_at TEXT
+);
 `);
 
 // Migrations for databases created before payer instruments / backup-card consent existed.

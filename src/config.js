@@ -88,6 +88,16 @@ export const CFG = {
     // Demo only: show the one-time code on screen instead of sending an SMS. Set DEMO_OTP=0 when a real SMS provider exists.
     demoOtp: env.DEMO_OTP !== '0',
   },
+  // SMS return-code route for payers on basic phones or weak data (mock gateway only; a real SMS provider is not integrated).
+  sms: {
+    mode: env.SMS_MODE || 'off', // 'off' | 'mock'
+    inboundNumber: env.SMS_INBOUND_NUMBER || '+917000000000', // placeholder destination number of the messaging gateway
+    codeMinutes: Number(env.SMS_CODE_MINUTES || 15),
+    maxTries: 5,
+    maxPerContactDay: Number(env.SMS_MAX_PER_CONTACT_DAY || 5),
+    routeWindowSec: [120, 180, 300], // how long each route in the capability ladder is given before the next is sent
+    payeeIdMinutes: Number(env.SMS_PAYEE_ID_MINUTES || 60),
+  },
   // International payers have no lender fallback, so their link stays open longer after landing (ASSUMPTION).
   intlLinkTtlMin: Number(env.INTL_LINK_TTL_MIN || 4320),
 

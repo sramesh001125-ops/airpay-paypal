@@ -422,6 +422,13 @@ export async function processRazorpayWebhook(headers, rawBody) {
   }
 }
 
+/** Settle an order from a verified settlement event of another route (SMS return-code route). Same checks as every rail. */
+export function settleExternal(orderId, { amountInr, source }) {
+  const o = get('SELECT * FROM orders WHERE id=?', orderId);
+  if (!o) throw new HttpError(404, 'unknown order');
+  return markPaid(o, { amountUsd: amountInr == null ? null : toUsd(amountInr, 'INR'), source });
+}
+
 // ------------------------------------------------------------------ deferral / lender fallback
 
 function defer(o) {

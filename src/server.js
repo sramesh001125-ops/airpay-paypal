@@ -17,6 +17,7 @@ import * as ai from './ai.js';
 import * as qr from './qr.js';
 import * as pp from './paypal.js';
 import * as rz from './razorpay.js';
+import * as sms from './smsroute.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -254,6 +255,25 @@ route('GET', '/api/audit/review/:id', async (req, res, ctx) => {
 }, { admin: true });
 route('POST', '/api/audit/review-all', (req, res) => json(res, audit.reviewAll()), { admin: true });
 route('GET', '/api/report/savings', (req, res) => json(res, engine.savingsReport()), { admin: true });
+
+// ------------------------------------------------------------------ SMS return-code route (mock gateway)
+route('POST', '/api/sms/issue', (req, res, ctx) => { const b = JSON.parse(ctx.body || '{}'); json(res, sms.issue(b.orderId, b), 201); }, { admin: true });
+route('POST', '/api/sms/escalate', (req, res, ctx) => json(res, sms.escalate(JSON.parse(ctx.body || '{}').challengeId)), { admin: true });
+route('POST', '/api/sms/tick', (req, res) => json(res, { escalated: sms.tick() }), { admin: true });
+route('GET', '/api/sms/status/:orderId', (req, res, ctx) => json(res, sms.status(ctx.params.orderId)), { admin: true });
+// Mock gateway: inbound messages and the outbox exist only in mock mode. A real gateway adapter (signed webhook) is not built.
+route('POST', '/api/sms/inbound', async (req, res, ctx) => {
+  if (CFG.sms.mode !== 'mock') throw new HttpError(501, 'real gateway adapter is not built');
+  json(res, await sms.inbound(JSON.parse(ctx.body || '{}')));
+});
+route('GET', '/api/sms/outbox', (req, res) => {
+  if (CFG.sms.mode !== 'mock') throw new HttpError(501, 'mock mode only');
+  json(res, { messages: sms.getOutbox(new URL(req.url, 'http://x').searchParams.get('to')) });
+});
+route('POST', '/api/sms/mock-settlement', (req, res, ctx) => {
+  if (CFG.sms.mode !== 'mock') throw new HttpError(501, 'mock mode only');
+  json(res, sms.settle(JSON.parse(ctx.body || '{}')));
+});
 
 // ------------------------------------------------------------------ static files
 function serveFile(res, name) {
